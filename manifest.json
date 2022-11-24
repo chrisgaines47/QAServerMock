@@ -1,0 +1,13 @@
+{
+    "manifest_version": 3,
+    "version": "1.0.0",
+    "name": "QAServerMock",
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {},
+    "permissions": ["scripting", "tabs", "storage"],
+    "host_permissions": [
+        "<all_urls>"
+    ]
+}
