@@ -1,4 +1,6 @@
 var appData = [];
+var isPolling = true;
+var optionsPort;
 
 function fetchOverride(appData) {
     //override fetch object to return custom responses for specified URLs during fetch
@@ -28,37 +30,51 @@ function fetchOverride(appData) {
         window.fetch = function() {
             return new Promise((resolve, reject) => {
                 var appData = getOverrides();
-                constantMock.apply(this, arguments)
-                    .then(response => {
-                        var toReplace = appData.find(service => !!response.url.indexOf(service.url));
-                        if(toReplace && response.type !== 'cors') {
-                            var newResponse = createResponse(toReplace.data);
-                            resolve(newResponse);
-                        } else {
-                            resolve(response);
+                var url = arguments[0] instanceof Request ? arguments[0].url : arguments[0];
+                var toReplace = appData.find(service => url.indexOf(service.url) !== -1);
+                if(toReplace) {
+                    resolve(createResponse(toReplace.data));
+                } else {
+                    constantMock.apply(this, arguments).then(function(response) {
+                        if(response.headers.get("content-type").indexOf('application/json') !== -1 && response.url.indexOf('auth') === -1) {
+                            var copyResponse = response.clone();
+                            try {
+                                copyResponse.json().then(res => {
+                                    var resultsEl = document.querySelector('#fetch-results');
+                                    var currentResults = resultsEl.getAttribute('fetchData');
+                                    if(!currentResults) {
+                                        currentResults = {};
+                                    } else {
+                                        currentResults = JSON.parse(currentResults);
+                                    }
+                                    if(currentResults) {
+                                        currentResults[response.url] = res;
+                                        resultsEl.setAttribute('fetchData', JSON.stringify(currentResults));
+                                    }
+                                });
+                            } catch {}
                         }
-                    }).catch(function() {
-                        var toReplace = appData.find(service => !!arguments[0].indexOf(service.url));
-                        if(toReplace) {
-                            var newResponse = createResponse(toReplace.data);
-                            resolve(newResponse);
-                        } else {
-                            reject();
-                        }
-                    });
+                        resolve(response);
+                    }).catch(reject);
+                }
             });
         }
     `;
 
-    var el = document.createElement('img');
-    el.id = "fetch-overrides";
-    el.setAttribute('src','/errorOut');
-    el.setAttribute('onerror', script);
+    if(!document.querySelector('#fetch-overrides')) {
+        var el = document.createElement('img');
+        el.id = "fetch-overrides";
+        el.setAttribute('src','/errorOut');
+        el.setAttribute('onerror', script);
+        var ele = document.createElement('img');
+        ele.id = "fetch-results";
 
-    //we need not only to set overrides, but be able to update them
-    //so we use the injected elements attributes as a working model
-    el.setAttribute('overrides', JSON.stringify(appData));
-    document.head.prepend(el);
+        //we need not only to set overrides, but be able to update them
+        //so we use the injected elements attributes as a working model
+        el.setAttribute('overrides', JSON.stringify(appData));
+        document.head.prepend(el);
+        document.head.prepend(ele);
+    }
 }
 
 function fetchListUpdate(appData) {
@@ -94,10 +110,42 @@ function updateAllTabs(message) {
     } );
 }
 
-chrome.runtime.onMessage.addListener(updateAllTabs);
-
 chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({
         url: 'userPage/page.html'
     });
 });
+
+function getFetchResults() {
+    var el = document.querySelector('#fetch-results');
+    var data = JSON.parse(el.getAttribute('fetchData'));
+    el.setAttribute('fetchData', JSON.stringify({}));
+    return data;
+}
+
+function handleFetchResults(results) {
+    if(results[0].result) {
+        optionsPort.postMessage(results[0].result);
+    }
+}
+
+chrome.runtime.onConnect.addListener(function(port) {
+    optionsPort = port;
+    port.onMessage.addListener(updateAllTabs);
+});
+
+var pollingInterval = setInterval(function() {
+    chrome.tabs.query({}, tabs => {
+        for(let tab of tabs) {
+            if(tab.url.startsWith('chrome')) continue;
+
+            chrome.scripting.executeScript(
+                {
+                    target: { tabId: tab.id },
+                    func: getFetchResults,
+                },
+                (results) => handleFetchResults(results)
+            );
+        }
+    } );
+}, 5000);

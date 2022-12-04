@@ -22,6 +22,18 @@ var testAppData = {features: testFeatures, services: testServices, featureFlags:
 var handler = new DataHandler();
 var locker;
 var appData;
+var port = chrome.runtime.connect({name: "options"});
+port.onMessage.addListener(function(msg) {
+    for(let [url, data] of Object.entries(msg)) {
+        fetchData.push({
+            url: url,
+            data: data
+        });
+    }
+    updateServiceCaptureList();
+});
+
+
 (async function() {
     locker = await new FileLocker();
 

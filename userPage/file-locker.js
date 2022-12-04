@@ -80,7 +80,7 @@ class FileLocker {
   
     loadFile(path) {
       return new Promise((resolve, reject) => {
-        this.findFile(path).then(function(fileEntry) {
+        this.findFile(path).then(fileEntry => {
           fileEntry.file(file => {
             var reader = new FileReader();
             reader.onloadend = function(e) {
@@ -111,7 +111,7 @@ class FileLocker {
   
     removeFile(path) {
       return new Promise((resolve, reject) => {
-        this.findFile(path).then(function(fileEntry) {
+        this.findFile(path).then(fileEntry => {
           fileEntry.remove(resolve, reject);
         }).catch(reject)
       })

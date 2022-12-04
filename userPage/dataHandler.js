@@ -66,7 +66,7 @@ function DataHandler() {
             function saveAppData() {
                 locker.saveFile('/appData', JSON.stringify(dh.appData)).then(function() {
                     resolve();
-                    chrome.runtime.sendMessage(dh.appData.services);
+                    dh.runtimeUpdate();
                 }).catch(function(er) {
                     reject();
                 });
@@ -172,6 +172,6 @@ function DataHandler() {
     }
 
     this.runtimeUpdate = function() {
-        chrome.runtime.sendMessage(this.appData.services);
+        // chrome.runtime.sendMessage(this.appData.services);
     };
 }

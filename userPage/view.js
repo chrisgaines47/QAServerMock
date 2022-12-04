@@ -3,8 +3,26 @@ let qa = query => document.querySelectorAll(query);
 let toggle = (query, className) => q(query).classList.toggle(className);
 let addChild = (parentSelector, child) => q(parentSelector).appendChild(child);
 let toggleAll = (arr, className) => arr.forEach(item => toggle(item, className));
+let hide = selector => {
+    var el = q(selector);
+    if(!el.classList.contains('dispnone')) {
+        el.classList.add('dispnone');
+    }
+}
+
+let hideAll = selectors => selectors.forEach(hide);
+
+let show = selector => {
+    var el = q(selector);
+    if(el.classList.contains('dispnone')) {
+        el.classList.remove('dispnone');
+    }
+}
+
+let showAll = selectors => selectors.forEach(show);
 
 var lastFeature;
+var fetchData = [];
 
 
 function toggleFailure(){
@@ -107,26 +125,42 @@ function loadSearch(){
 
 //navigation
 function attachListeners() {
-    q('#services-nav').addEventListener('click', function() {
+    q('#services-nav').addEventListener('click', function(e) {
         loadFeaturePage(lastFeature ? lastFeature : appData.features[0]);
-        toggleAll(
-            ['.p-search-box', '#services-page', '#feature-flags-page'],
-            'dispnone'
-        );
+        hideAll(['#feature-flags-page','#service-capture-page']);
+        showAll(['.p-search-box', '#services-page']);
         qa('.p-navigation__item').forEach(function(item) {
-            item.classList.toggle('is-selected');
+            if(item === e.target.parentElement) {
+                item.classList.add('is-selected');
+            } else {
+                item.classList.remove('is-selected');
+            }
         });
 
     });
-    q('#featureFlags-nav').addEventListener('click', function() {
-        toggleAll(
-            ['.p-search-box', '#services-page', '#feature-flags-page'],
-            'dispnone'
-        );
+    q('#featureFlags-nav').addEventListener('click', function(e) {
+        hideAll(['#services-page', '.p-search-box', '#service-capture-page']);
+        show('#feature-flags-page');
         qa('.p-navigation__item').forEach(function(item) {
-            item.classList.toggle('is-selected');
+            if(item === e.target.parentElement) {
+                item.classList.add('is-selected');
+            } else {
+                item.classList.remove('is-selected');
+            }
         });
         loadFeatureFlagsPage();
+    });
+    q('#serviceCapture-nav').addEventListener('click', function(e) {
+        hideAll(['#feature-flags-page', '#services-page', '.p-search-box']);
+        show('#service-capture-page');
+        qa('.p-navigation__item').forEach(function(item) {
+            if(item === e.target.parentElement) {
+                item.classList.add('is-selected');
+            } else {
+                item.classList.remove('is-selected');
+            }
+        });
+        loadServiceCapturePage();
     });
 }
 
@@ -533,6 +567,27 @@ function loadFeatureFlagsPage(newFlag) {
     q('#feature-flags-page').replaceChildren(featureFlagPage);
 }
 
+function loadServiceCapturePage() {
+    var serviceCapture = dom.div([
+        dom.h3(['Incoming services and responses']),
+        dom.table({class: 'p-table--expanding'}, [
+            dom.thead(
+                dom.tr([
+                    dom.th(['Url']),
+                    dom.th(['']),
+                    dom.th({class: 'u-align--right'}, ['Actions'])
+                ])
+            ),
+            dom.tbody({id: 'service-capture-table'}, [
+                dom.tr([
+                    
+                ])
+            ])
+        ])
+    ]);
+    q('#service-capture-page').replaceChildren(serviceCapture);
+}
+
 function loadPage() {
     loadSearch();
     loadFeaturePage(handler.getFeatureById(0));
@@ -540,7 +595,16 @@ function loadPage() {
 }
 
 
-
+// chrome.runtime.onMessage.addListener(
+//     function(request, sender, sendResponse) {
+//       for(let [url, data] of Object.entries(request)) {
+//         fetchData.push({
+//             url: url,
+//             data: data
+//         });
+//       }
+//     }
+//   );
 
 
 
