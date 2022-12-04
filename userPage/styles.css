@@ -843,7 +843,7 @@ textarea.json {
 }
 
 .dispnone {
-    display: none;
+    display: none !important;
 }
 
 #search-submit {
@@ -921,4 +921,14 @@ label {
   font-size: 1rem;
   cursor: pointer;
   margin: .5rem;
+}
+
+.p-table--expanding tbody {
+  max-height: 800px;
+  overflow-y: scroll;
+}
+
+.p-table--expanding tbody td {
+  padding: .75rem;
+  cursor: pointer;
 }

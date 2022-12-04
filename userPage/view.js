@@ -567,6 +567,29 @@ function loadFeatureFlagsPage(newFlag) {
     q('#feature-flags-page').replaceChildren(featureFlagPage);
 }
 
+function expandingRow(data) {
+    var services = handler.getServices();
+    var toUpdate = services.find(service => data.url.indexOf(service.url) !== -1);
+    return dom.tr({id: `capture-${data.id}`},[
+        dom.td([data.url,
+            dom.button({class: 'is-dense', style: 'float: right'}, [toUpdate ? 'Update': 'Add'], {
+                
+            })
+        ]),
+        dom.td({id: `expanded-row-${data.id}`, class: 'p-table__expanding-panel dispnone'}, [
+            dom.div({class: 'row'}, [
+                dom.pre([
+                    JSON.stringify(data.data, null, 2)
+                ])
+            ])
+        ])
+    ], {
+        click: function() {
+            q(`#expanded-row-${data.id}`).classList.toggle('dispnone');
+        }
+    })
+}
+
 function loadServiceCapturePage() {
     var serviceCapture = dom.div([
         dom.h3(['Incoming services and responses']),
@@ -574,18 +597,25 @@ function loadServiceCapturePage() {
             dom.thead(
                 dom.tr([
                     dom.th(['Url']),
-                    dom.th(['']),
-                    dom.th({class: 'u-align--right'}, ['Actions'])
+                    dom.th({'aria-hidden': true})
                 ])
             ),
             dom.tbody({id: 'service-capture-table'}, [
-                dom.tr([
-                    
-                ])
+                fetchData.map(expandingRow)
             ])
         ])
     ]);
     q('#service-capture-page').replaceChildren(serviceCapture);
+}
+
+function updateServiceCaptureList() {
+    fetchData.forEach(function(fd) {
+        var existingRow = q(`#capture-${fd.id}`);
+        if(!existingRow) {
+            q('#service-capture-table').appendChild(expandingRow(fd));
+        }
+    });
+    attachTableExpand();
 }
 
 function loadPage() {
@@ -844,3 +874,47 @@ setupSideNavigations('.p-side-navigation, [class*="p-side-navigation--"]');
       });
     }
   
+function attachTableExpand() {
+
+    function toggleExpanded(element, show) {
+        var target = document.getElementById(element.getAttribute('aria-controls'));
+    
+        if (target) {
+        element.setAttribute('aria-expanded', show);
+    
+        // Adjust the text of the toggle button
+        if (show) {
+            element.innerHTML = element.getAttribute('data-shown-text');
+        } else {
+            element.innerHTML = element.getAttribute('data-hidden-text');
+        }
+    
+        target.setAttribute('aria-hidden', !show);
+        }
+    }
+  
+  /**
+      Attaches event listeners for the expandable table open and close click events.
+      @param {HTMLElement} table The expandable table container element.
+    */
+  function setupExpandableTable(table) {
+    // Set up an event listener on the container so that panels can be added
+    // and removed and events do not need to be managed separately.
+    table.addEventListener('click', function (event) {
+      var target = event.target;
+      var isTargetOpen = target.getAttribute('aria-expanded') === 'true';
+  
+      if (target.classList.contains('u-toggle')) {
+        // Toggle visibility of the target panel.
+        toggleExpanded(target, !isTargetOpen);
+      }
+    });
+  }
+  
+  // Setup all expandable tables on the page.
+  var tables = document.querySelectorAll('.p-table--expanding');
+  
+  for (var i = 0, l = tables.length; i < l; i++) {
+    setupExpandableTable(tables[i]);
+  }
+}

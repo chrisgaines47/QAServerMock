@@ -36,7 +36,7 @@ function fetchOverride(appData) {
                     resolve(createResponse(toReplace.data));
                 } else {
                     constantMock.apply(this, arguments).then(function(response) {
-                        if(response.headers.get("content-type").indexOf('application/json') !== -1 && response.url.indexOf('auth') === -1) {
+                        if(response.headers.get("content-type").indexOf('application/json') !== -1 && response.url.indexOf('svc') !== -1) {
                             var copyResponse = response.clone();
                             try {
                                 copyResponse.json().then(res => {

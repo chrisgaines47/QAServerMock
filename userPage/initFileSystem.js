@@ -25,9 +25,11 @@ var appData;
 var port = chrome.runtime.connect({name: "options"});
 port.onMessage.addListener(function(msg) {
     for(let [url, data] of Object.entries(msg)) {
+        var nextId = fetchData.length ? 1 + Math.max(...fetchData.map(item => item.id)) : 0;
         fetchData.push({
             url: url,
-            data: data
+            data: data,
+            id: nextId
         });
     }
     updateServiceCaptureList();
