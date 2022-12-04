@@ -6,23 +6,27 @@ let toggleAll = (arr, className) => arr.forEach(item => toggle(item, className))
 
 var lastFeature;
 
+
+function toggleFailure(){
+    toggle('#failure', 'dispnone');
+    setTimeout(function(){
+        toggle('#failure', 'dispnone');
+    }, 3000);
+}
+
 function saveHandler(loadFunc, loadParam){
-    function toggleFailure(){
-        toggle('#failure-notification-container', 'dispnone');
-        setTimeout(function(){
-            toggle('#failure-notification-container', 'dispnone');
-        }, 3000);
-    }
-    
+
     function toggleSuccess(){
-        toggle('#success-notification-container', 'dispnone');
+        toggle('#success', 'dispnone');
         setTimeout(function(){
-            toggle('#success-notification-container', 'dispnone');
+            toggle('#success', 'dispnone');
         }, 3000);
     }
 
     handler.saveData().then(function() {
-        loadFunc(loadParam);
+        if(loadFunc) {
+            loadFunc(loadParam);
+        }
         toggleSuccess();
     }).catch(function() {
         toggleFailure();
@@ -55,7 +59,7 @@ function loadSearch(){
             var name = service.name.toLowerCase();
             var url = service.url.toLowerCase();
             var description = service.description.toLowerCase();
-            return (url.length && url.indexOf(input) != -1) || name.indexOf(input) != -1 || ( description.length && description.indexOf(description) != -1);
+            return (url.length && url.indexOf(input) != -1) || name.indexOf(input) != -1 || ( description.length && description.indexOf(input) != -1);
         });
         return matches;
     }
@@ -122,13 +126,16 @@ function attachListeners() {
         qa('.p-navigation__item').forEach(function(item) {
             item.classList.toggle('is-selected');
         });
+        loadFeatureFlagsPage();
     });
 }
 
 //feature menu
 function updateNav(typeSelected, id) {
-    toggle('.highlight', 'highlight');
-    toggle(`#${typeSelected}-${id}`, 'highlight');
+    try {
+        toggle('.highlight', 'highlight');
+        toggle(`#${typeSelected}-${id}`, 'highlight');
+    } catch {}
 }
 
 function loadFeatureMenu() {
@@ -139,18 +146,7 @@ function loadFeatureMenu() {
                     click: function() {
                         loadFeaturePage(feature);
                     }
-                }),
-                dom.ul([
-                    handler.getFeatureServices(feature).map(function(service){
-                        return dom.li([
-                            dom.a({id: `service-${service.id}`},[service.name], {
-                                click: function() {
-                                    loadServicePage(service);
-                                }
-                            })
-                        ])
-                    })
-                ])
+                })
             ])
         })
     ], {
@@ -167,13 +163,14 @@ function loadFeatureMenu() {
 
 function loadFeaturePage(feature, isNewFeature) {
     showHide('feature-display');
+    loadFeatureMenu();
     resetSearch();
 
     function addFeature() {
         var newFeature = handler.addFeature();
         loadFeatureMenu();
         loadFeaturePage(newFeature, true);
-        showHide('feature-edit')
+        showHide('feature-edit');
     }
 
     function addService() {
@@ -190,23 +187,18 @@ function loadFeaturePage(feature, isNewFeature) {
 
     function cancelEdit() {
         if(isNewFeature) {
-            handler.resetUnsaved();
-            loadFeatureMenu();
-            loadFeaturePage(handler.getFeatureById(0));
+            loadFeaturePage(lastFeature);
         } else {
             loadFeaturePage(feature);
         }
     }
 
     function saveFeature() {
-        var featureObj = {
-            name: q('#feature-name-edit').value,
-            description: q('#feature-description-edit').value
-        };
-        Object.assign(feature, featureObj);
         handler.updateFeature(feature);
         saveHandler(loadFeaturePage, feature);
     }
+
+    var featureFlags = handler.getFlagsByFeature(feature);
 
     var featureDisplay = dom.div({id: 'feature-display', class: 'content-window'}, [
             dom.button({class: `p-button ${feature.id === 0 ? 'dispnone': ''}`, style: 'float:right'},['Edit Feature'], {
@@ -250,15 +242,38 @@ function loadFeaturePage(feature, isNewFeature) {
                     dom.tr([
                         dom.th(['Name']),
                         dom.th(['Key']),
-                        dom.th(['Value'])
+                        dom.th(['Value']),
+                        dom.th([])
                     ])
                 ]),
                 dom.tbody([
-                    handler.getFlagsByFeature(feature).map(function(flag){
+                    featureFlags.map(function(flag){
                         return dom.tr({class: 'flag-row'}, [
                             dom.td([flag.name]),
                             dom.td([flag.key]),
-                            dom.td([flag.value])
+                            dom.td([
+                                dom.label({class: 'checkbox'}, [
+                                    dom.input({ type: 'checkbox',  model: flag, modelkey: 'value', checked: flag.value},[],{
+                                        change: function(evt) {
+                                            evt.target.parentElement.querySelector('span').textContent = evt.target.checked;
+                                            handler.updateFeatureFlag(flag);
+                                            handler.saveData().then(function() {
+                                                q(`#flag-${flag.id}`).classList.toggle('dispnone');
+                                                setTimeout(function() {
+                                                    q(`#flag-${flag.id}`).classList.toggle('dispnone');
+                                                }, 1000);
+                                            })
+                                        }
+                                    }),
+                                    dom.span([`${flag.value === true ? 'true': 'false'}`])                                    
+                                ])
+                            ]),
+                            dom.td([
+                                dom.div({id: `flag-${flag.id}`,class: 'dispnone'},[
+                                    dom.i({class: 'fa fa-check', style: 'color: green; font-size: 1rem;'}),
+                                    dom.span(['Flag updated.'])
+                                ])
+                            ])
                         ]);
                     })
                 ])
@@ -275,21 +290,23 @@ function loadFeaturePage(feature, isNewFeature) {
             dom.button({class: 'p-button', style: 'float:right'},['Save Feature'], {
                 click: saveFeature
             }),
-            dom.form([
+            dom.div([
                 dom.label({for: 'feature-name-edit'}, [
                     'Feature name: '
                 ]),
-                dom.input({id: 'feature-name-edit', name: 'feature-name-edit', type: 'text', value: feature.name},[]),
+                dom.input({id: 'feature-name-edit', name: 'feature-name-edit', type: 'text', value: feature.name, model: feature, modelkey: 'name'},[]),
                 dom.label({for: 'feature-description-edit'}, [
                     'Feature description: '
                 ]),
-                dom.textarea({id: 'feature-description-edit', name: 'feature-description-edit'},[feature.description])
+                dom.textarea({id: 'feature-description-edit', name: 'feature-description-edit', model: feature, modelkey: 'description'},[feature.description])
             ])
         ]);
 
     isNewFeature ? featureDisplay.classList.toggle('dispnone') : featureEdit.classList.toggle('dispnone');
 
-    updateNav('feature', feature.id);
+    if(!isNewFeature) {
+        updateNav('feature', feature.id);
+    }
     lastFeature = feature;
     q('#feature-display').replaceWith(featureDisplay);
     q('#feature-edit').replaceWith(featureEdit);
@@ -300,17 +317,14 @@ function loadServicePage(service) {
     showHide('service-page');
 
     function saveService() {
-        var data;
+        if(handler.checkScenarioForChanges()) {
+            service.scenarios.push(handler.newScenario);
+        }
         try {
-            data = JSON.parse(q('#service-data-edit').value);
-            var serviceObj = {
-                name: q('#service-name-edit').value,
-                url: q('#service-url-edit').value,
-                data: data,
-                description: q('#service-description-edit').value
-            };
-
-            Object.assign(service, serviceObj);
+            service.scenarios.forEach(function(scenario) {
+                if(typeof scenario.data === 'string')
+                    scenario.data = JSON.parse(scenario.data);
+            });
             handler.updateService(service);
             saveHandler(loadServicePage, service);
         } catch {
@@ -324,43 +338,119 @@ function loadServicePage(service) {
         saveHandler(loadFeaturePage, handler.getFeatureById(service.featureId));
     }
 
+    function deleteScenario(scenario) {
+        service.scenarios.splice(service.scenarios.findIndex(sce => scenario.name === sce.name), 1);
+        handler.updateService(service);
+        saveHandler(loadServicePage, service);
+    }
+
+    function labelInput(label, inputValue, model, modelkey) {
+        return dom.div([
+            dom.label([label]),
+            dom.input({model: model, modelkey: modelkey, value: inputValue, type: 'text'})
+        ]);
+    }
+
+    function defaultCheckboxChange() {
+        return { change: function(el) {
+                if(el.target.checked); {
+                    service.scenarios.forEach(function(s) {
+                        if(s.isDefault && s.name !== scenario.name)
+                            s.isDefault = false;
+                    });
+
+                    Array.from(qa('.defaultCheckbox')).forEach(function(scenario) {
+                        if(el.target !== scenario) {
+                            scenario.checked = false;
+                        }
+                    })
+                }
+            }
+        }
+    }
+
+    function scenario(scenario, options) {
+        return dom.div({role: 'tabpanel', class: 'scenario', id: options.isAdd ? 'add-scenario' : `${scenario.name}-scenario`},[
+            dom.div({class: 'row'}, [
+                dom.div({class: 'col-3'}, [
+                    labelInput('Scenario Name: ', scenario.name, scenario, 'name')
+                ]),
+                dom.div({class: 'col-3'}, [
+                    labelInput('Status: ', scenario.status, scenario, 'status')
+                ]),
+                dom.div({class: 'col-3', style: ''}, [
+                    dom.label([
+                        'Is Default Scenario'
+                    ]),
+                    dom.input({class: 'defaultCheckbox', model: scenario, modelkey: 'isDefault', type: 'checkbox', checked: scenario.isDefault},[], defaultCheckboxChange()),
+                    dom.i({class: 'fas fa-trash', style: `float: right; font-size: 2rem; color: #a31616; cursor: pointer; ${options.isAdd ? 'display: none' : ''}`}, [], {
+                        click: function() {deleteScenario(scenario)}
+                    })
+                ]),
+            ]),
+            dom.div({class: 'row'}, [
+                dom.label([
+                    'Service data: '
+                ]),
+                dom.textarea({ class: 'json', modelkey: 'data', model: scenario},[
+                    JSON.stringify(scenario.data, null, 2)
+                ])
+            ])
+        ], {
+            after: function(el) {
+                if(options.hidden) {
+                    el.setAttribute('hidden', 'hidden');
+                }
+            }
+        })
+    }
+
+
     var servicePage = dom.div([
         dom.button({class: 'p-button', style: 'float:right'},['Save Service'], {
             click: saveService
         }),
-        dom.form([
-            dom.label({for: 'service-name-edit'}, [
-                'Service name: '
-            ]),
-            dom.input({id: 'service-name-edit', name: 'service-name-edit', type: 'text', value: service.name},[]),
-            dom.label({for: 'service-url-edit'}, [
-                'Service url: '
-            ]),
-            dom.input({id: 'service-url-edit', name: 'service-url-edit', type: 'text', value: service.url},[]),
+        dom.div([
+            labelInput('Service name: ', service.name, service, 'name'),
+            labelInput('Service url: ', service.url, service, 'url'),
             dom.label({for: 'service-description-edit'},[
                 'Service description: '
             ]),
-            dom.textarea({id: 'service-description-edit'},[
+            dom.textarea({id: 'service-description-edit', modelkey: 'description', model: service,},[
                 service.description
             ]),
-            dom.label({for: 'service-data-edit'},[
-                'Service data: '
+            dom.hr({class: 'p-separator'}),
+            dom.div({class : 'p-segmented-control is-dense'}, [
+                dom.div({class: 'p-segmented-control__list', role: 'tablist'}, [
+                    service.scenarios.map(function(scenario, index) {
+                        return dom.button({class: 'p-segmented-control__button', role: 'tab', 'aria-selected': (index === 0) ? true : false, 'aria-controls': `${scenario.name}-scenario`}, [
+                            scenario.name
+                        ])
+                    }),
+                    dom.button({class: 'p-segmented-control__button', role: 'tab', 'aria-selected': false, 'aria-controls': `add-scenario`}, [
+                        'Add', dom.i({class: 'fa fa-plus'})
+                    ])
+                ])
             ]),
-            dom.textarea({id: 'service-data-edit', class: 'json'},[
-                JSON.stringify(service.data, null, 2)
-            ]),
+            service.scenarios.map(function(scenarioData, index) {
+                if(index === 0)
+                    return scenario(scenarioData, {})
+                return scenario(scenarioData, {hidden: true})
+            }),
+            scenario(handler.addScenario(), {isAdd: true, hidden: true}),
             dom.button({class: 'p-button', style: 'float:right'},['Delete Service'], {
                 click: deleteService
-            }),
+            })
         ])
     ]);
-    updateNav('service', service.id);
+
     q('#service-page').replaceChildren(servicePage);
+    initTabs('[role="tablist"]');
 }
 
 function loadFeatureFlagsPage(newFlag) {
     var sortedFlags = handler.getData().featureFlags.sort(function(a, b) {
-        return getFeatureById(a.featureId).name.localeCompare(getFeatureById(b.featureId).name);
+        return handler.getFeatureById(a.featureId).name.localeCompare(handler.getFeatureById(b.featureId).name);
     });
 
     if(newFlag) {
@@ -370,7 +460,6 @@ function loadFeatureFlagsPage(newFlag) {
 
     function saveFeatureFlags() {
         handler.updateFeatureFlags(sortedFlags);
-        console.error(sortedFlags);
         saveHandler(loadFeatureFlagsPage, false);
     }
     
@@ -390,20 +479,18 @@ function loadFeatureFlagsPage(newFlag) {
                     dom.th(['Name']),
                     dom.th(['Feature']),
                     dom.th(['Key']),
-                    dom.th(['Value']),
-                    dom.th(['Type'])
+                    dom.th(['Value'])
                 ])
             ]),
             dom.tbody([
                 sortedFlags.map(function(featureFlag){
-
-                    featureRow = dom.tr({class: 'feature-tr'},[
+                    return dom.tr({class: 'feature-tr'},[
                         dom.td(
                             dom.input({type: 'text', class: 'input feature-input', model: featureFlag, modelkey: 'name', value: featureFlag.name})
                         ),
                         dom.td(
                             dom.div({class: 'select'}, [
-                                dom.select({model: featureFlag, modelkey: 'featureId', style: 'border: none'}, [
+                                dom.select({model: featureFlag, modelkey: 'featureId', value: featureFlag.featureId, style: 'border: none'}, [
                                     handler.getData().features.map(function(feature){
                                         return dom.option({value: feature.id},[feature.name])
                                     })
@@ -420,48 +507,24 @@ function loadFeatureFlagsPage(newFlag) {
                         dom.td([
                             dom.div({class: 'flag-value booleanValue'}, [
                                 dom.label({class: 'checkbox'}, [
-                                    dom.input({class: 'value-checkbox', type: 'checkbox',  model: featureFlag, modelkey: 'value',},[],{
+                                    dom.input({class: 'value-checkbox', type: 'checkbox',  model: featureFlag, modelkey: 'value', checked: featureFlag.value},[],{
                                         change: function(evt) {
                                             evt.target.parentElement.querySelector('span').textContent = evt.target.checked;
-                                        },
-                                        after: function(el) {
-                                            el.checked = featureFlag.value === true ? true : false;
                                         }
                                     }),
                                     dom.span([`${featureFlag.value === true ? 'true': 'false'}`])                                    
                                 ])
-                            ]),
-                            dom.div({class: 'flag-value stringValue'}, [
-                                dom.input({type: 'text', class: 'input feature-input value-input', model: featureFlag, modelkey: 'value', value: featureFlag.value})
                             ])
-                        ],  {
-                            after: function(el) {
-                                if(typeof featureFlag.value === "string") {
-                                    el.querySelector('.flag-value.booleanValue').classList.toggle('dispnone');
-                                } else {
-                                    el.querySelector('.flag-value.stringValue').classList.toggle('dispnone');
-                                }
-                            }
-                        }),
+                        ]),
                         dom.td([
-                            dom.div({class: 'select'}, [
-                                dom.select({style: 'border: none;'},[
-                                    dom.option({value: 'boolean'}, ['Boolean']),
-                                    dom.option({value: 'string'}, ['String'])
-                                ], {
-                                    change: function(evt) {
-                                        featureRow.querySelector('.flag-value.stringValue').classList.toggle('dispnone');
-                                        featureRow.querySelector('.flag-value.booleanValue').classList.toggle('dispnone');
-                                    },
-                                    after: function(el) {
-                                        el.value = typeof featureFlag.value;
-                                    }
-                                })
-                            ])
+                            dom.i({class: 'delete-icon fas fa-trash'},[], {
+                                click: function() {
+                                    handler.deleteFeatureFlag(featureFlag);
+                                    saveHandler(loadFeatureFlagsPage, false);
+                                }
+                            })
                         ])
                     ]);
-
-                    return featureRow;
                 })
             ])
         ])
@@ -472,9 +535,7 @@ function loadFeatureFlagsPage(newFlag) {
 
 function loadPage() {
     loadSearch();
-    loadFeatureMenu();
     loadFeaturePage(handler.getFeatureById(0));
-    loadFeatureFlagsPage();
     attachListeners();
 }
 
@@ -624,3 +685,98 @@ function setupSideNavigations(sideNavigationSelector) {
 }
 
 setupSideNavigations('.p-side-navigation, [class*="p-side-navigation--"]');
+
+    var keys = {
+      left: 'ArrowLeft',
+      right: 'ArrowRight',
+    };
+  
+    var direction = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+    };
+  
+    /**
+      Attaches a number of events that each trigger
+      the reveal of the chosen tab content
+      @param {Array} tabs an array of tabs within a container
+    */
+    function attachEvents(tabs) {
+      tabs.forEach(function (tab, index) {
+        tab.addEventListener('keyup', function (e) {
+          if (e.code === keys.left || e.code === keys.right) {
+            switchTabOnArrowPress(e, tabs);
+          }
+        });
+  
+        tab.addEventListener('click', function (e) {
+          e.preventDefault();
+          setActiveTab(tab, tabs);
+        });
+  
+        tab.addEventListener('focus', function () {
+          setActiveTab(tab, tabs);
+        });
+  
+        tab.index = index;
+      });
+    }
+  
+    /**
+      Determine which tab to show when an arrow key is pressed
+      @param {KeyboardEvent} event
+      @param {Array} tabs an array of tabs within a container
+    */
+    function switchTabOnArrowPress(event, tabs) {
+      var pressed = event.code;
+  
+      if (direction[pressed]) {
+        var target = event.target;
+        if (target.index !== undefined) {
+          if (tabs[target.index + direction[pressed]]) {
+            tabs[target.index + direction[pressed]].focus();
+          } else if (pressed === keys.left) {
+            tabs[tabs.length - 1].focus();
+          } else if (pressed === keys.right) {
+            tabs[0].focus();
+          }
+        }
+      }
+    }
+  
+    /**
+      Cycles through an array of tab elements and ensures 
+      only the target tab and its content are selected
+      @param {HTMLElement} tab the tab whose content will be shown
+      @param {Array} tabs an array of tabs within a container
+    */
+    function setActiveTab(tab, tabs) {
+      tabs.forEach(function (tabElement) {
+        var tabContent = document.getElementById(tabElement.getAttribute('aria-controls'));
+  
+        if (tabElement === tab) {
+          tabElement.setAttribute('aria-selected', true);
+          tabContent.removeAttribute('hidden');
+        } else {
+          tabElement.setAttribute('aria-selected', false);
+          tabContent.setAttribute('hidden', true);
+        }
+      });
+    }
+  
+    /**
+      Attaches events to tab links within a given parent element,
+      and sets the active tab if the current hash matches the id
+      of an element controlled by a tab link
+      @param {String} selector class name of the element 
+      containing the tabs we want to attach events to
+    */
+    function initTabs(selector) {
+      var tabContainers = [].slice.call(document.querySelectorAll(selector));
+  
+      tabContainers.forEach(function (tabContainer) {
+        var tabs = [].slice.call(tabContainer.querySelectorAll('[aria-controls]'));
+        attachEvents(tabs);
+      });
+    }
+  

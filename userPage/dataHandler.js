@@ -1,9 +1,32 @@
 function DataHandler() {
     var dh = this;
-    var logs = [];
-    var featureAdd;
-    var serviceAdd;
-    var featureFlagAdd;
+
+    const DEFAULTS = {
+        scenario: (() => ({name: '', isDefault: false,  status: '', data: {}})),
+        feature: (() => ({ name: 'New Feature', id: this.getNextId('features'), description: ''})),
+        service: ((featureId)=> ({name: 'New Service', id: this.getNextId('services'), description: '', url: '', featureId: featureId, scenarios: [{status: 200,name: 'Default',isDefault: true,data: {ok: 'go'}}]})),
+        flag: (() => ({name: 'New Flag',value: false,key: 'new.flag.key',featureId: 0, id: this.getNextId('featureFlags')}))
+    }
+
+    this.addScenario = function() {
+        this.newScenario = DEFAULTS.scenario();
+        return this.newScenario;
+    }
+
+    this.addFeature = function() {
+        this.newFeature = DEFAULTS.feature();
+        return this.newFeature;
+    };
+
+    this.checkScenarioForChanges = function() {
+        if(dh.newScenario.name === '')
+            return false;
+        for(let key of  Object.keys(dh.newScenario)) {
+            if(DEFAULTS.scenario()[key] !== dh.newScenario[key])
+                return true;
+        };
+        return false;
+    };
 
     this.syncFeatureFlags = function() {
         var featureFlagService = dh.appData.services.find(service => service.url.indexOf('featureFlags') !== -1);
@@ -59,17 +82,11 @@ function DataHandler() {
 
     this.getFeatures = function() {
         var features = this.getData().features;
-        if(featureAdd) {
-            features.push(featureAdd);
-        }
         return features;
     }
 
     this.getServices = function() {
         var data = this.getData().services;
-        if(serviceAdd) {
-            data.push(serviceAdd);
-        }
         return data;
     }
 
@@ -88,22 +105,16 @@ function DataHandler() {
         return nextId;
     }
 
-    this.addFeature = function() {
-        var nextId = this.getNextId('features');
-        var feature = {
-            name: 'New Feature',
-            id: nextId,
-            description: ''
-        };
-        featureAdd = feature;
-        return featureAdd;
-    }
-
     this.deleteFeature = function(featureId) {
         var data = this.getData();
         var removeIndex = data.features.map(feature => feature.id).indexOf(featureId);
         ~removeIndex && data.features.splice(removeIndex, 1);
         data.services = data.services.filter(service => service.featureId !== featureId);
+        data.featureFlags.forEach(flag => {
+            if(flag.featureId === featureId) {
+                flag.featureId = 0;
+            }
+        });
         this.appData = data;
     }
 
@@ -113,18 +124,8 @@ function DataHandler() {
     }
 
     this.addService = function(featureId) {
-        var nextId = this.getNextId('services');
-        var service = {
-            name: 'New Service',
-            id: nextId,
-            description: '',
-            data: {
-            },
-            url: '',
-            featureId: featureId
-        };
-        serviceAdd = service;
-        return serviceAdd;
+        this.newService = DEFAULTS.service(featureId);
+        return this.newService;
     }
 
     this.deleteService = function(serviceId) {
@@ -134,46 +135,40 @@ function DataHandler() {
         this.appData = data;
     }
 
+    this.deleteFeatureFlag = function(featureFlag) {
+        var data = this.getData();
+        var removeIndex = data.featureFlags.map(flag => flag.id).indexOf(featureFlag.id);
+        ~removeIndex && data.featureFlags.splice(removeIndex, 1);
+        this.appData = data;
+    }
+
     this.updateService = function(replaceService) {
         this.deleteService(replaceService.id);
         this.appData.services.push(replaceService);
     }
 
     this.addFeatureFlag = function() {
-        var newFlagData = {
-            name: 'New Flag',
-            value: false,
-            key: 'new.flag.key',
-            featureId: 0
-        };
-        featureFlagAdd = newFlagData;
-        return featureFlagAdd;
+        this.newFlag = DEFAULTS.flag();
+        return this.newFlag;
     }
 
     this.updateFeatureFlags = function(flags) {
         dh.appData.featureFlags = flags;
     }
 
+    this.updateFeatureFlag = function(flag) {
+        var addedFlag = dh.appData.featureFlags.find(addedFlag => addedFlag.key === flag.key);
+        if(!addedFlag)
+            return false;
+        for(let key of Object.keys(flag)) {
+            addedFlag[key] = flag[key];
+        }
+        return true;
+    }
+
     this.getFlagsByFeature = function(feature) {
         var data = this.getData();
         return data.featureFlags.filter(flag =>  flag.featureId == feature.id);
-    }
-
-    this.getUnsaved = function(category) {
-        switch (category) {
-            case 'feature':
-                return featureAdd;
-            case 'service':
-                return serviceAdd;
-            default:
-                return featureFlagAdd; 
-        }
-    }
-
-    this.resetUnsaved = function() {
-        featureAdd = false;
-        serviceAdd = false;
-        featureFlagAdd = false;
     }
 
     this.runtimeUpdate = function() {
