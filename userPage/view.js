@@ -25,7 +25,8 @@ var lastFeature;
 var fetchData = [];
 
 
-function toggleFailure(){
+function toggleFailure(message = 'Failed to save data.'){
+    q('#failure-content-target').textContent = message;
     toggle('#failure', 'dispnone');
     setTimeout(function(){
         toggle('#failure', 'dispnone');
@@ -47,7 +48,7 @@ function saveHandler(loadFunc, loadParam){
         }
         toggleSuccess();
     }).catch(function() {
-        toggleFailure();
+        toggleFailure('Failed to save data.');
     });
 };
 
@@ -127,7 +128,7 @@ function loadSearch(){
 function attachListeners() {
     q('#services-nav').addEventListener('click', function(e) {
         loadFeaturePage(lastFeature ? lastFeature : appData.features[0]);
-        hideAll(['#feature-flags-page','#service-capture-page']);
+        hideAll(['#feature-flags-page','#service-capture-page','#import-export-page']);
         showAll(['.p-search-box', '#services-page']);
         qa('.p-navigation__item').forEach(function(item) {
             if(item === e.target.parentElement) {
@@ -139,7 +140,7 @@ function attachListeners() {
 
     });
     q('#featureFlags-nav').addEventListener('click', function(e) {
-        hideAll(['#services-page', '.p-search-box', '#service-capture-page']);
+        hideAll(['#services-page', '.p-search-box', '#service-capture-page','#import-export-page']);
         show('#feature-flags-page');
         qa('.p-navigation__item').forEach(function(item) {
             if(item === e.target.parentElement) {
@@ -151,7 +152,7 @@ function attachListeners() {
         loadFeatureFlagsPage();
     });
     q('#serviceCapture-nav').addEventListener('click', function(e) {
-        hideAll(['#feature-flags-page', '#services-page', '.p-search-box']);
+        hideAll(['#feature-flags-page', '#services-page', '.p-search-box', '#import-export-page']);
         show('#service-capture-page');
         qa('.p-navigation__item').forEach(function(item) {
             if(item === e.target.parentElement) {
@@ -161,6 +162,18 @@ function attachListeners() {
             }
         });
         loadServiceCapturePage();
+    });
+    q('#import-export-nav').addEventListener('click', function(e) {
+        hideAll(['#feature-flags-page', '#services-page', '.p-search-box', '#service-capture-page']);
+        show('#import-export-page');
+        qa('.p-navigation__item').forEach(function(item) {
+            if(item === e.target.parentElement) {
+                item.classList.add('is-selected');
+            } else {
+                item.classList.remove('is-selected');
+            }
+        });
+        loadImportExportPage();
     });
 }
 
@@ -233,6 +246,7 @@ function loadFeaturePage(feature, isNewFeature) {
     }
 
     var featureFlags = handler.getFlagsByFeature(feature);
+    var featureScenarios = handler.getScenariosByFeature(feature);
 
     var featureDisplay = dom.div({id: 'feature-display', class: 'content-window'}, [
             dom.button({class: `p-button ${feature.id === 0 ? 'dispnone': ''}`, style: 'float:right'},['Edit Feature'], {
@@ -254,19 +268,36 @@ function loadFeaturePage(feature, isNewFeature) {
                 dom.thead([
                     dom.tr([
                         dom.th(['Name']),
-                        dom.th(['Url'])
+                        dom.th(['Url']),
+                        dom.th(['Enabled'])
                     ])
                 ]),
                 dom.tbody([
                     handler.getFeatureServices(feature).map(function(service){
                         return dom.tr({class: 'service-row'}, [
-                            dom.td([service.name]),
-                            dom.td([service.url])
-                        ], {
-                            click: function() {
-                                loadServicePage(service);
-                            }
-                        });
+                            dom.td([service.name], {click: function() {loadServicePage(service);}}),
+                            dom.td([service.url], {click: function() {loadServicePage(service);}}),
+                            dom.td([
+                                dom.label({class: 'p-switch', style: 'display: inline; margin-right: 1rem;'}, [
+                                    dom.input({type: 'checkbox', class: 'p-switch__input', model: service, modelkey: 'enabled', value: service.enabled, checked: service.enabled, role: 'switch'}, [], {
+                                        change: function() {
+                                            handler.updateService(service);
+                                            handler.saveData().then(function() {
+                                                q(`#service-enable-change-${service.id}`).classList.toggle('dispnone');
+                                                setTimeout(function() {
+                                                    q(`#service-enable-change-${service.id}`).classList.toggle('dispnone');
+                                                }, 1000);
+                                            });
+                                        }
+                                    }),
+                                    dom.span({class: 'p-switch__slider'})
+                                ]),
+                                dom.span({id: `service-enable-change-${service.id}`, class: 'dispnone'}, [
+                                    dom.i({class: 'fa fa-check', style: 'color: green; font-size: 1rem;'}),
+                                    dom.span(['Service updated'])
+                                ])
+                            ])
+                        ]);
                     })
                 ])
             ]),
@@ -276,8 +307,7 @@ function loadFeaturePage(feature, isNewFeature) {
                     dom.tr([
                         dom.th(['Name']),
                         dom.th(['Key']),
-                        dom.th(['Value']),
-                        dom.th([])
+                        dom.th(['Value'])
                     ])
                 ]),
                 dom.tbody([
@@ -286,7 +316,7 @@ function loadFeaturePage(feature, isNewFeature) {
                             dom.td([flag.name]),
                             dom.td([flag.key]),
                             dom.td([
-                                dom.label({class: 'checkbox'}, [
+                                dom.label({class: 'checkbox', style: 'display: inline; margin-right: 1rem;'}, [
                                     dom.input({ type: 'checkbox',  model: flag, modelkey: 'value', checked: flag.value},[],{
                                         change: function(evt) {
                                             evt.target.parentElement.querySelector('span').textContent = evt.target.checked;
@@ -300,15 +330,75 @@ function loadFeaturePage(feature, isNewFeature) {
                                         }
                                     }),
                                     dom.span([`${flag.value === true ? 'true': 'false'}`])                                    
-                                ])
-                            ]),
-                            dom.td([
-                                dom.div({id: `flag-${flag.id}`,class: 'dispnone'},[
+                                ]),
+                                dom.span({id: `flag-${flag.id}`,class: 'dispnone'},[
                                     dom.i({class: 'fa fa-check', style: 'color: green; font-size: 1rem;'}),
                                     dom.span(['Flag updated.'])
                                 ])
                             ])
                         ]);
+                    })
+                ])
+            ]),
+            dom.h3(['Scenarios']),
+            dom.p({style: 'max-width: none'},['Default scenarios always apply unless an enabled scenario overrides it. Enabling a scenario that shares services with another enabled scenario will disable the latter. Service enable/disable takes priority over scenario enable/diable. If any services share the same name, the service list for that scenario will only show one.']),
+            dom.table([
+                dom.thead([
+                    dom.tr([
+                        dom.th(['Scenario Name']),
+                        dom.th(['Included Service Names']),
+                        dom.th(['Enabled'])
+                    ])
+                ]),
+                dom.tbody([
+                    Object.keys(featureScenarios).map(function(scenarioName) {
+                        return dom.tr([
+                            dom.td([scenarioName]),
+                            dom.td([
+                                featureScenarios[scenarioName].map(function(serviceName) {
+                                    return dom.div([serviceName])
+                                })
+                            ]),
+                            dom.td([
+                                dom.label({class: 'p-switch', style: 'display: inline; margin-right: 1rem;'}, [
+                                    dom.input({id: `scenario-enable-${scenarioName}`,type: 'checkbox', class: 'p-switch__input', role: 'switch'},[], {
+                                        change: function(evt) {
+                                            if(evt.target.checked) {
+                                                if(!feature.enabledScenarios.includes(scenarioName)) {
+                                                    feature.enabledScenarios.push(scenarioName);
+                                                    var toMitigate = handler.mitigateScenarioCollision(feature, scenarioName);
+                                                    if(toMitigate) {
+                                                        for(let mitigateScenario of toMitigate) {
+                                                            q(`#scenario-enable-${mitigateScenario}`).checked = false;
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                var removeIndex = feature.enabledScenarios.indexOf(scenarioName);
+                                                ~removeIndex && feature.enabledScenarios.splice(removeIndex, 1);
+                                            }
+                                            handler.updateFeature(feature);
+                                            handler.saveData().then(function() {
+                                                q(`#scenario-enable-change-${scenarioName}`).classList.toggle('dispnone');
+                                                setTimeout(function() {
+                                                    q(`#scenario-enable-change-${scenarioName}`).classList.toggle('dispnone');
+                                                }, 1000);
+                                            })
+                                        },
+                                        after: function(el) {
+                                            if(feature.enabledScenarios.includes(scenarioName)) {
+                                                el.checked = true;
+                                            }
+                                        }
+                                    }),
+                                    dom.span({class: 'p-switch__slider'})
+                                ]),
+                                dom.span({id: `scenario-enable-change-${scenarioName}`, class: 'dispnone'}, [
+                                    dom.i({class: 'fa fa-check', style: 'color: green; font-size: 1rem;'}),
+                                    dom.span(['Scenario status updated'])
+                                ])
+                            ])
+                        ])
                     })
                 ])
             ]),
@@ -340,10 +430,17 @@ function loadFeaturePage(feature, isNewFeature) {
 
     if(!isNewFeature) {
         updateNav('feature', feature.id);
+        lastFeature = feature;
     }
-    lastFeature = feature;
     q('#feature-display').replaceWith(featureDisplay);
     q('#feature-edit').replaceWith(featureEdit);
+}
+
+function labelInput(label, inputValue, model, modelkey) {
+    return dom.div([
+        dom.label([label]),
+        dom.input({model: model, modelkey: modelkey, value: inputValue, type: 'text'})
+    ]);
 }
 
 function loadServicePage(service) {
@@ -351,6 +448,17 @@ function loadServicePage(service) {
     showHide('service-page');
 
     function saveService() {
+        var collided = handler.checkUrlForCollision(service.url);
+        if(collided) {
+            toggleFailure('Service with matching url already exists. Cannot have duplicate services');
+            return;
+        }
+        for(let [scenario, index] of service.scenarios.entries()) {
+            if(index !== 0 && ['Default',''].includes(scenario.name)) {
+                toggleFailure('Scenario name cannot be Default or left blank');
+                return;
+            }
+        }
         if(handler.checkScenarioForChanges()) {
             service.scenarios.push(handler.newScenario);
         }
@@ -362,7 +470,7 @@ function loadServicePage(service) {
             handler.updateService(service);
             saveHandler(loadServicePage, service);
         } catch {
-            toggleFailure();
+            toggleFailure('Could not convert service data to valid JSON');
         }
     }
 
@@ -378,46 +486,22 @@ function loadServicePage(service) {
         saveHandler(loadServicePage, service);
     }
 
-    function labelInput(label, inputValue, model, modelkey) {
-        return dom.div([
-            dom.label([label]),
-            dom.input({model: model, modelkey: modelkey, value: inputValue, type: 'text'})
-        ]);
-    }
-
-    function defaultCheckboxChange() {
-        return { change: function(el) {
-                if(el.target.checked); {
-                    service.scenarios.forEach(function(s) {
-                        if(s.isDefault && s.name !== scenario.name)
-                            s.isDefault = false;
-                    });
-
-                    Array.from(qa('.defaultCheckbox')).forEach(function(scenario) {
-                        if(el.target !== scenario) {
-                            scenario.checked = false;
-                        }
-                    })
-                }
-            }
-        }
-    }
-
     function scenario(scenario, options) {
         return dom.div({role: 'tabpanel', class: 'scenario', id: options.isAdd ? 'add-scenario' : `${scenario.name}-scenario`},[
             dom.div({class: 'row'}, [
                 dom.div({class: 'col-3'}, [
+                    scenario.name === 'Default' ?
+                    dom.div([
+                        dom.label(['Scenario Name: ']),
+                        dom.div({style: 'font-size: 1rem; padding: .3rem;'}, ['Default']),
+                    ]) :
                     labelInput('Scenario Name: ', scenario.name, scenario, 'name')
                 ]),
                 dom.div({class: 'col-3'}, [
                     labelInput('Status: ', scenario.status, scenario, 'status')
                 ]),
                 dom.div({class: 'col-3', style: ''}, [
-                    dom.label([
-                        'Is Default Scenario'
-                    ]),
-                    dom.input({class: 'defaultCheckbox', model: scenario, modelkey: 'isDefault', type: 'checkbox', checked: scenario.isDefault},[], defaultCheckboxChange()),
-                    dom.i({class: 'fas fa-trash', style: `float: right; font-size: 2rem; color: #a31616; cursor: pointer; ${options.isAdd ? 'display: none' : ''}`}, [], {
+                    dom.i({class: 'fas fa-trash', style: `float: right; font-size: 2rem; color: #a31616; cursor: pointer; ${options.isAdd || scenario.name === 'Default' ? 'display: none' : ''}`}, [], {
                         click: function() {deleteScenario(scenario)}
                     })
                 ]),
@@ -446,7 +530,7 @@ function loadServicePage(service) {
         }),
         dom.div([
             labelInput('Service name: ', service.name, service, 'name'),
-            labelInput('Service url: ', service.url, service, 'url'),
+            labelInput('Service url (or part of url to match): ', service.url, service, 'url'),
             dom.label({for: 'service-description-edit'},[
                 'Service description: '
             ]),
@@ -524,7 +608,7 @@ function loadFeatureFlagsPage(newFlag) {
                         ),
                         dom.td(
                             dom.div({class: 'select'}, [
-                                dom.select({model: featureFlag, modelkey: 'featureId', value: featureFlag.featureId, style: 'border: none'}, [
+                                dom.select({model: featureFlag, modelkey: 'featureId', value: featureFlag.featureId}, [
                                     handler.getData().features.map(function(feature){
                                         return dom.option({value: feature.id},[feature.name])
                                     })
@@ -568,12 +652,121 @@ function loadFeatureFlagsPage(newFlag) {
 }
 
 function expandingRow(data) {
-    var services = handler.getServices();
-    var toUpdate = services.find(service => data.url.indexOf(service.url) !== -1);
+    function initiateAdd(data) {
+        function cancelAdd() {
+            hide('#service-capture-modal');
+        }
+
+        function submitAdd() {
+            if(toUpdate) {
+                if(data.selectedScenario === 'New Scenario') {
+                    if(data.scenarioName !== '' && data.scenarioName !== 'Default') {
+                        var newScenario = handler.addScenario();
+                        newScenario.data = data.data;
+                        newScenario.name = data.scenarioName;
+                        toUpdate.scenarios.push(newScenario);
+                        handler.updateService(toUpdate);
+                        saveHandler(loadServicePage, toUpdate);
+                    } else {
+                        toggleFailure('Scenario name cannot be empty or Default.');
+                        return;
+                    }
+                } else {
+                    var overrideScenario = toUpdate.scenarios.find(scenario => scenario.name === data.selectedScenario);
+                    overrideScenario.data = data.data;
+                    handler.updateService(toUpdate);
+                    saveHandler(loadServicePage, toUpdate);
+                }
+
+            } else {
+                var serviceAdd = handler.addService(data.featureId);
+                serviceAdd.url = data.url;
+                serviceAdd.scenarios[0].data = data.data;
+                handler.updateService(serviceAdd);
+                saveHandler(loadServicePage, serviceAdd);
+            }
+            hide('#service-capture-modal');
+        }
+
+        data.scenarioName = '';
+        data.featureId = 0;
+        data.selectedScenario = 'New Scenario';
+        var services = handler.getServices();
+        var toUpdate = services.find(service => data.url.indexOf(service.url) !== -1);
+
+        function updateScenario() {
+            return dom.div([
+                dom.div({class: 'select'}, [
+                    dom.select({model: data, modelkey: 'selectedScenario', value: data.selectedScenario, style: 'border:none'}, [
+                        [{name: 'New Scenario', data: data.data}].concat(toUpdate.scenarios).map(function(scenario) {
+                            return dom.option({value: scenario.name}, [scenario.name])
+                        })
+                    ], {
+                        after: function(el) {
+                            el.value = data.selectedScenario;
+                        },
+                        change: function() {
+                            if(data.selectedScenario === 'New Scenario') {
+                                show('#select-new-scenario');
+                            } else {
+                                hide('#select-new-scenario');
+                            }
+                        }
+                    })
+                ]),
+                dom.div({id: 'select-new-scenario'}, [
+                    labelInput('Scenario name: ', data.scenarioName, data, 'scenarioName')
+                ])
+            ])
+        }
+
+        function addScenario() {
+            return dom.div({class: 'select'}, [
+                dom.select({model: data, modelkey: 'featureId', value: data.featureId}, [
+                    handler.getData().features.map(function(feature){
+                        return dom.option({value: feature.id},[feature.name])
+                    })
+                ], {
+                    after: function(el) {
+                        el.value = data.featureId;
+                    }
+                })
+            ]);
+        }
+
+        var modal = dom.section({class: 'p-modal__dialog', role:'dialog'}, [
+            dom.header({class: 'p-modal__header'}, [
+                dom.h2({class: 'p-modal__title'}, ['Confirm Add'])
+            ]),
+            dom.p([toUpdate ?
+                'This service url is already targeted by an existing service. Either add a new scenario to append this response to, or select an existing one.' :
+                'This service url is not yet targeted, please select a feature to add it to.'
+            ]),
+            dom.pre({class: toUpdate ? '' : 'dispnone'}, [
+                data.url + '<-- matched by existing service: ' + (toUpdate ? toUpdate.url: '')
+            ]),
+            dom.div([
+                toUpdate ?
+                updateScenario() :
+                addScenario()
+            ]),
+            dom.footer({class: 'p-modal__footer'}, [
+                dom.button({class: 'u-no-margin--bottom'}, ['Cancel'], {click: cancelAdd}),
+                dom.button({class: 'p-button--positive u-no-margin--bottom'}, ['Save'], {
+                    click: submitAdd
+                })
+            ])
+        ]);
+        q('#service-capture-modal').replaceChildren(modal);
+        show('#service-capture-modal');
+    }
     return dom.tr({id: `capture-${data.id}`},[
         dom.td([data.url,
-            dom.button({class: 'is-dense', style: 'float: right'}, [toUpdate ? 'Update': 'Add'], {
-                
+            dom.button({class: 'is-dense', style: 'float: right'}, ['Add'], {
+                click: function(e) {
+                    e.stopPropagation();
+                    initiateAdd(data);
+                }
             })
         ]),
         dom.td({id: `expanded-row-${data.id}`, class: 'p-table__expanding-panel dispnone'}, [
@@ -593,6 +786,7 @@ function expandingRow(data) {
 function loadServiceCapturePage() {
     var serviceCapture = dom.div([
         dom.h3(['Incoming services and responses']),
+        dom.p({style: 'max-width: none'}, ['Enabled services will not show up here, so disable them and re-navigate to the feature if you want to capture them.']),
         dom.table({class: 'p-table--expanding'}, [
             dom.thead(
                 dom.tr([
@@ -611,11 +805,71 @@ function loadServiceCapturePage() {
 function updateServiceCaptureList() {
     fetchData.forEach(function(fd) {
         var existingRow = q(`#capture-${fd.id}`);
-        if(!existingRow) {
+        if(!existingRow && q('#service-capture-table')) {
             q('#service-capture-table').appendChild(expandingRow(fd));
         }
     });
     attachTableExpand();
+}
+
+function loadImportExportPage() {
+    var features = handler.getFeatures();
+    var exportModel = {
+        selectedFeature: -1
+    }
+    var ovrModel = {
+        method: 0,
+        methods: [{
+            id: 0,
+            name: 'Prioritize incoming data'
+        }, {
+            id: 1,
+            name: 'Prioritize existing data'
+        }]
+    }
+
+    function importExportTypeSelect(model) {
+        return dom.div({type: 'select'},[
+            dom.select({model: model, modelkey: 'selectedFeature', value: model.selectedFeature},[
+                [{id: -1, name: 'All Features'}].concat(features).map(function(feature) {
+                    return dom.option({value: feature.id}, [feature.name])
+                })
+            ])
+        ]);
+    }
+
+    var importExport = dom.div({class: 'row'},[
+        dom.div({class: 'col-6'},[
+            dom.h3(['Export']),
+            dom.p(['Export either all data, or specific features.']),
+            dom.label(['Export type']),
+            importExportTypeSelect(exportModel),
+            dom.button({class: 'p-button'}, ['Export data'], {
+                click: function() {
+                    handler.dataExport();
+                }
+            })
+        ]),
+        dom.div({class: 'col-6'}, [
+            dom.h3(['Import']),
+            dom.p(['Import data']),
+            dom.label(['Choose override type']),
+            dom.div({type: 'select'},[
+                dom.select({model: ovrModel, modelkey: 'method', value: ovrModel.method},[
+                    ovrModel.methods.map(function(method) {
+                        return dom.option({value: method.id}, [method.name])
+                    })
+                ])
+            ]),
+            dom.button({class: 'p-button'}, ['Import data'], {
+                click: function() {
+                    
+                }
+            })
+        ])
+    ]);
+
+    q('#import-export-page').replaceChildren(importExport);
 }
 
 function loadPage() {
@@ -625,39 +879,8 @@ function loadPage() {
 }
 
 
-// chrome.runtime.onMessage.addListener(
-//     function(request, sender, sendResponse) {
-//       for(let [url, data] of Object.entries(request)) {
-//         fetchData.push({
-//             url: url,
-//             data: data
-//         });
-//       }
-//     }
-//   );
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//some scripts I copied for the vanilla framework to do its thing
 
 // small script to make the example interactive
 // not intended to be used in projects

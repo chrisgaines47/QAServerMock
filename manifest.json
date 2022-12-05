@@ -8,6 +8,7 @@
     "action": {},
     "permissions": ["scripting", "tabs", "storage"],
     "host_permissions": [
-        "<all_urls>"
+        "*://*.chase.com/*",
+        "chase.com/"
     ]
 }

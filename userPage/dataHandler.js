@@ -2,9 +2,9 @@ function DataHandler() {
     var dh = this;
 
     const DEFAULTS = {
-        scenario: (() => ({name: '', isDefault: false,  status: '', data: {}})),
-        feature: (() => ({ name: 'New Feature', id: this.getNextId('features'), description: ''})),
-        service: ((featureId)=> ({name: 'New Service', id: this.getNextId('services'), description: '', url: '', featureId: featureId, scenarios: [{status: 200,name: 'Default',isDefault: true,data: {ok: 'go'}}]})),
+        scenario: (() => ({name: '',  status: '200', data: {}})),
+        feature: (() => ({ name: 'New Feature', id: this.getNextId('features'), description: '', enabledScenarios:[]})),
+        service: ((featureId)=> ({name: 'New Service', id: this.getNextId('services'), enabled: true, description: '', url: '', featureId: featureId, scenarios: [{status: '200',name: 'Default',data: {ok: 'go'}}]})),
         flag: (() => ({name: 'New Flag',value: false,key: 'new.flag.key',featureId: 0, id: this.getNextId('featureFlags')}))
     }
 
@@ -27,27 +27,6 @@ function DataHandler() {
         };
         return false;
     };
-
-    this.syncFeatureFlags = function() {
-        var featureFlagService = dh.appData.services.find(service => service.url.indexOf('featureFlags') !== -1);
-        if(featureFlagService) {
-            Object.keys(featureFlagService.data).map(function(key){
-                var flag;
-                var foundEntry = dh.appData.featureFlags.find(flag => flag.key === key);
-                if(foundEntry && foundEntry.value !== featureFlagService.data[key]) {
-                    foundEntry.value = featureFlagService.data[key];
-                } else {
-                    flag = {
-                        name: key,
-                        value: featureFlagService.data[key],
-                        key: key,
-                        featureId: 0
-                    };
-                    dh.appData.featureFlags.push(flag);
-                }
-            });
-        }
-    }
 
     this.loadAppData = function(appData, fallback) {
 
@@ -119,8 +98,16 @@ function DataHandler() {
     }
 
     this.updateFeature = function(replaceFeature) {
-        this.deleteFeature(replaceFeature.id);
-        this.appData.features.push(replaceFeature);
+        var features = dh.getFeatures();
+        var targetFeature = features.find(feature => feature.id === replaceFeature.id);
+        if(targetFeature) {
+            for(let key in replaceFeature) {
+                targetFeature[key] = replaceFeature[key]
+            }
+            this.appData.features = features;
+        } else {
+            this.appData.features.push(replaceFeature);
+        }
     }
 
     this.addService = function(featureId) {
@@ -171,7 +158,130 @@ function DataHandler() {
         return data.featureFlags.filter(flag =>  flag.featureId == feature.id);
     }
 
+    this.getScenariosByFeature = function(feature) {
+        return dh.getFeatureServices(feature).reduce((acc, cur) => {
+            for(let scenario of cur.scenarios) {
+                if(scenario.name == 'Default') continue;
+                if(!(scenario.name in acc)) {
+                    acc[scenario.name] = [cur.name];
+                } else if(!acc[scenario.name].includes(cur.name)){
+                    acc[scenario.name].push(cur.name);
+                }
+            }
+            return acc;
+        }, {});
+    }
+
+    this.getActiveScenario = function(service) {
+        var feature = this.getFeatureById(service.featureId);
+        var activeScenario = service.scenarios.find(function(scenario) {
+            return feature.enabledScenarios.includes(scenario.name);
+        });
+        var defaultScenario = service.scenarios.find(scenario => scenario.name === 'Default');
+        if(activeScenario) {
+            return activeScenario;
+        }
+        return defaultScenario;
+    }
+
+    this.getServicesWithScenario = function(feature, scenario) {
+        var services = this.getFeatureServices(feature).filter(function(service) {
+            for(let sce of service.scenarios) {
+                if(sce.name === scenario)
+                    return true;
+            }
+        }).map(service => service.id);
+        return services;
+    }
+
+    this.checkUrlForCollision = function(url) {
+        var services = this.getServices();
+        for(let service of services) {
+            if(service.url.indexOf(url) !== -1)
+                return true;
+            if(url.indexOf(service.url) !== -1)
+                return true;
+        }
+        return false;
+    }
+
+    this.mitigateScenarioCollision = function(feature, enabledScenario) {
+        var toDisable = [];
+        var checkServices = this.getServicesWithScenario(feature, enabledScenario);
+        for(let scenario of feature.enabledScenarios) {
+            if(scenario !== enabledScenario) {
+                var enabledScenarioServices = dh.getServicesWithScenario(feature, scenario);
+                if(checkServices.some(item => enabledScenarioServices.includes(item))) {
+                    toDisable.push(scenario);
+                }
+            }
+        }
+        for(let disable of toDisable) {
+            feature.enabledScenarios = feature.enabledScenarios.filter(scen => scen !== disable);
+        }
+        dh.updateFeature(feature);
+        if(toDisable.length) {
+            return toDisable;
+        }
+        return false;
+    }
+
+    this.generateFeatureFlagService = function(FFservice) {
+        var flags = dh.getData().featureFlags;
+        if(FFservice && FFservice.data.featureFlags) {
+            flags.forEach(function(flag) {
+                FFservice.data.featureFlags[flag.key] = flag.value;
+            });
+        } else {
+            var flagDataObj = {};
+            flags.forEach(function(flag) {
+                flagDataObj[flag.key] = flag.value;
+            });
+            FFservice = {
+                url: 'featureFlags',
+                status: 200,
+                data: {
+                    "featureFlags": flagDataObj
+                }
+            }
+        }
+        return FFservice;
+    }
+
     this.runtimeUpdate = function() {
-        // chrome.runtime.sendMessage(this.appData.services);
+        var enabledServices = this.getServices().filter(service => service.enabled);
+        var featureFlagsProcessed = false;
+        var processedServices = enabledServices.map(function(service) {
+            var activeScenario = dh.getActiveScenario(service);
+            var status = parseInt(activeScenario.status);
+            var compiledService = {
+                url: service.url,
+                status: status ? status : 200,
+                data: activeScenario.data
+            }
+            if(service.url.indexOf('featureFlags') !== -1) {
+                compiledService = dh.generateFeatureFlagService(compiledService);
+                featureFlagsProcessed = true;
+            }
+            return compiledService;
+        });
+
+        if(!featureFlagsProcessed) {
+            var featureFlagService = dh.generateFeatureFlagService();
+            processedServices.push(featureFlagService);
+        }
+
+        port.postMessage(processedServices);
     };
+
+    this.dataExport = function() {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(dh.appData, null, 2)], {
+          type: "text/plain"
+        }));
+        a.setAttribute("download", "QAServerMockAppData.json");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
 }

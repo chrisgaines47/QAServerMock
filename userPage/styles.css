@@ -932,3 +932,23 @@ label {
   padding: .75rem;
   cursor: pointer;
 }
+
+#service-capture-modal p {
+  font-size: 20px;
+}
+#service-capture-modal select {
+  max-width: 300px;
+}
+
+td {
+  overflow-wrap: anywhere;
+}
+
+p {
+  font-size: 16px;
+}
+
+select {
+  border: none;
+  max-width: 300px;
+}

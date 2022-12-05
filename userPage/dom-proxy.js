@@ -50,7 +50,7 @@ const dom = new Proxy({}, {
         if(el.getAttribute('type') === "checkbox") {
           attrs.model[attrs.modelkey] = evt.target.checked;
         } else if(el.nodeName === "SELECT") {
-          attrs.model[attrs.modelkey] = parseInt(evt.target.value);
+          attrs.model[attrs.modelkey] = parseInt(evt.target.value) ? parseInt(evt.target.value) : evt.target.value;
         } else {
           attrs.model[attrs.modelkey] = evt.target.value;
         }

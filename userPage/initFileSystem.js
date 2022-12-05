@@ -3,17 +3,17 @@ var testServices = [{
     url: '/someUrl',
     featureId: 0,
     id: 0,
+    enabled: true,
     description: 'description for service',
     scenarios: [{
-        status: 200,
+        status: '200',
         name: 'Default',
-        isDefault: true,
         data: {ok: 'go'}
     }]
 }];
 
 var testFeatures = [
-    {name: 'Unassigned', id: 0, description: 'Place all uncategorized services here'}
+    {name: 'Unassigned', id: 0, description: 'Place all uncategorized services here', enabledScenarios: []}
 ];
 
 var featureFlags = [{name: 'New Flag', value: false, key: 'new.flag.key', featureId: 0, id: 0}];

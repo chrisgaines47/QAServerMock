@@ -10,12 +10,12 @@ function fetchOverride(appData) {
     //the onerror javascript handler when the url cant be found so we can inject our
     //override directly into the pages context
     var script = `
-        function createResponse(data) {
+        function createResponse(toReplace) {
             var newResponseBlob = new Blob(
-                [JSON.stringify(data)],
+                [JSON.stringify(toReplace.data)],
                 {type: 'application/json'}
             );
-            var init = {"status": 200};
+            var init = {"status": toReplace.status ? toReplace.status : 200};
             myResponse = new Response(newResponseBlob, init);
             return myResponse;
         }
@@ -33,7 +33,7 @@ function fetchOverride(appData) {
                 var url = arguments[0] instanceof Request ? arguments[0].url : arguments[0];
                 var toReplace = appData.find(service => url.indexOf(service.url) !== -1);
                 if(toReplace) {
-                    resolve(createResponse(toReplace.data));
+                    resolve(createResponse(toReplace));
                 } else {
                     constantMock.apply(this, arguments).then(function(response) {
                         if(response.headers.get("content-type").indexOf('application/json') !== -1 && response.url.indexOf('svc') !== -1) {
@@ -48,7 +48,8 @@ function fetchOverride(appData) {
                                         currentResults = JSON.parse(currentResults);
                                     }
                                     if(currentResults) {
-                                        currentResults[response.url] = res;
+                                        var result = response.url.toString().split('.com');
+                                        currentResults[result[1]] = res;
                                         resultsEl.setAttribute('fetchData', JSON.stringify(currentResults));
                                     }
                                 });
@@ -82,7 +83,7 @@ function fetchListUpdate(appData) {
 }
 
 chrome.tabs.onUpdated.addListener(function (tabId , info, tab) {
-    if (info.status === 'loading' && !tab.url.startsWith('chrome')) {
+    if (info.status === 'loading' && !tab.url.startsWith('chrome') && tab.url.includes('chase')) {
         chrome.scripting.executeScript({
             target: {
                 tabId: tabId,
@@ -97,7 +98,7 @@ function updateAllTabs(message) {
     appData = message;
     chrome.tabs.query({}, tabs => {
         for(let tab of tabs) {
-            if(tab.url.startsWith('chrome')) continue;
+            if(tab.url.startsWith('chrome') || !tab.url.includes('chase')) continue;
 
             chrome.scripting.executeScript({
                 target: {
@@ -124,7 +125,7 @@ function getFetchResults() {
 }
 
 function handleFetchResults(results) {
-    if(results[0].result) {
+    if(results[0] && results[0].result && optionsPort) {
         optionsPort.postMessage(results[0].result);
     }
 }
@@ -132,12 +133,16 @@ function handleFetchResults(results) {
 chrome.runtime.onConnect.addListener(function(port) {
     optionsPort = port;
     port.onMessage.addListener(updateAllTabs);
+
+    port.onDisconnect.addListener(function() {
+        optionsPort = null;
+    });
 });
 
 var pollingInterval = setInterval(function() {
     chrome.tabs.query({}, tabs => {
         for(let tab of tabs) {
-            if(tab.url.startsWith('chrome')) continue;
+            if(tab.url.startsWith('chrome') || !tab.url.includes('chase')) continue;
 
             chrome.scripting.executeScript(
                 {
